@@ -1,61 +1,88 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token;
-use anchor_spl::token::{Token, MintTo, Transfer};
+use anchor_spl::token::{self, Token, MintTo, Transfer, Burn, Approve, Revoke};
 
-declare_id!("259tUTNsszYSyvQnubuG4GjzCDG1PiyfbqxPB9Rm7SmY");
+declare_id!("HeoFLa15SoFAEHBNeaGTLmytW1P1V9Z8c4Hq5YQfz6DT");
 
 #[program]
 pub mod my_token_program {
     use super::*;
 
-    pub fn mint_token(ctx: Context<MintToken>,) -> Result<()> {
-        // Create the MintTo struct for our context
+    pub fn mint_token(ctx: Context<MintToken>) -> Result<()> {
+        msg!("Minting 10 tokens to account: {}", ctx.accounts.token_account.key());
+        msg!("Mint authority: {}", ctx.accounts.authority.key());
         let cpi_accounts = MintTo {
             mint: ctx.accounts.mint.to_account_info(),
             to: ctx.accounts.token_account.to_account_info(),
             authority: ctx.accounts.authority.to_account_info(),
         };
-        
         let cpi_program = ctx.accounts.token_program.to_account_info();
-        // Create the CpiContext we need for the request
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-
-        // Execute anchor's helper function to mint tokens
         token::mint_to(cpi_ctx, 10)?;
-        
         Ok(())
     }
 
     pub fn transfer_token(ctx: Context<TransferToken>) -> Result<()> {
-        // Create the Transfer struct for our context
-        let transfer_instruction = Transfer{
+        msg!("Transferring 5 tokens from account: {} to account: {}", ctx.accounts.from.key(), ctx.accounts.to.key());
+        msg!("Transfer authority: {}", ctx.accounts.from_authority.key());
+        let transfer_instruction = Transfer {
             from: ctx.accounts.from.to_account_info(),
             to: ctx.accounts.to.to_account_info(),
             authority: ctx.accounts.from_authority.to_account_info(),
         };
-         
         let cpi_program = ctx.accounts.token_program.to_account_info();
-        // Create the Context for our Transfer request
         let cpi_ctx = CpiContext::new(cpi_program, transfer_instruction);
-
-        // Execute anchor's helper function to transfer tokens
-        anchor_spl::token::transfer(cpi_ctx, 5)?;
- 
+        token::transfer(cpi_ctx, 5)?;
         Ok(())
     }
 
+    pub fn burn_token(ctx: Context<BurnToken>, amount: u64) -> Result<()> {
+        msg!("Burning {} tokens from account: {}", amount, ctx.accounts.token_account.key());
+        msg!("Burn authority: {}", ctx.accounts.authority.key());
+        let cpi_accounts = Burn {
+            mint: ctx.accounts.mint.to_account_info(),
+            from: ctx.accounts.token_account.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::burn(cpi_ctx, amount)?;
+        Ok(())
+    }
+    pub fn approve_delegate(ctx: Context<ApproveDelegate>, amount: u64) -> Result<()> {
+        msg!("Approving delegate to spend {} tokens from account: {}", amount, ctx.accounts.token_account.key());
+        msg!("Owner authority: {}", ctx.accounts.owner.key());
+        let cpi_accounts = Approve {
+            to: ctx.accounts.token_account.to_account_info(),
+            delegate: ctx.accounts.delegate.to_account_info(),
+            authority: ctx.accounts.owner.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::approve(cpi_ctx, amount)?;
+        Ok(())
+    }
+    pub fn revoke_delegate(ctx: Context<RevokeDelegate>) -> Result<()> {
+        msg!("Revoking delegate authority for account: {}", ctx.accounts.token_account.key());
+        msg!("Owner authority: {}", ctx.accounts.owner.key());
+        let cpi_accounts = Revoke {
+            source: ctx.accounts.token_account.to_account_info(),
+            authority: ctx.accounts.owner.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::revoke(cpi_ctx)?;
+        Ok(())
+    }
+       
 }
 
 #[derive(Accounts)]
 pub struct MintToken<'info> {
-    /// CHECK: This is the token that we want to mint
     #[account(mut)]
     pub mint: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,
-    /// CHECK: This is the token account that we want to mint tokens to
     #[account(mut)]
     pub token_account: UncheckedAccount<'info>,
-    /// CHECK: the authority of the mint account
     #[account(mut)]
     pub authority: AccountInfo<'info>,
 }
@@ -63,12 +90,36 @@ pub struct MintToken<'info> {
 #[derive(Accounts)]
 pub struct TransferToken<'info> {
     pub token_program: Program<'info, Token>,
-    /// CHECK: The associated token account that we are transferring the token from
     #[account(mut)]
     pub from: UncheckedAccount<'info>,
-    /// CHECK: The associated token account that we are transferring the token to
     #[account(mut)]
     pub to: AccountInfo<'info>,
-    // the authority of the from account 
     pub from_authority: Signer<'info>,
 }
+
+#[derive(Accounts)]
+pub struct BurnToken<'info> {
+    #[account(mut)]
+    pub mint: UncheckedAccount<'info>,
+    pub token_program: Program<'info, Token>,
+    #[account(mut)]
+    pub token_account: UncheckedAccount<'info>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct ApproveDelegate<'info> {
+    #[account(mut)]
+    pub token_account: UncheckedAccount<'info>,
+    pub delegate: AccountInfo<'info>,
+    pub owner: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+    pub struct RevokeDelegate<'info> {
+        #[account(mut)]
+        pub token_account: UncheckedAccount<'info>,
+        pub owner: Signer<'info>,
+        pub token_program: Program<'info, Token>,
+    }

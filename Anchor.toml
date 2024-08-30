@@ -11,7 +11,7 @@ my_token_program  = "259tUTNsszYSyvQnubuG4GjzCDG1PiyfbqxPB9Rm7SmY"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

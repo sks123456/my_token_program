@@ -7,41 +7,31 @@ import {
   createAssociatedTokenAccountInstruction,
   getAssociatedTokenAddress,
   createInitializeMintInstruction,
+  AuthorityType,
 } from "@solana/spl-token";
 import { assert } from "chai";
 
-// Utility function to get the provider
 const getProvider = () => anchor.AnchorProvider.env();
-
-// Utility function to create a new transaction
 const createTransaction = () => new anchor.web3.Transaction();
 
 describe("my-token-program", () => {
-  anchor.setProvider(getProvider());
-  console.log("Workspace Programs:", anchor.workspace);
-  console.log("Program:", anchor.workspace.MyTokenProgram);
+  const provider = getProvider();
+  anchor.setProvider(provider);
 
-  // Retrieve the MyTokenProgram struct from our smart contract
   const program = anchor.workspace.MyTokenProgram as Program<MyTokenProgram>;
-
-  // Generate a random keypair that will represent our token mint
   const mintKey: anchor.web3.Keypair = anchor.web3.Keypair.generate();
-
-  // AssociatedTokenAccount for anchor's workspace wallet
-  let associatedTokenAccount: anchor.web3.PublicKey | undefined;
+  let associatedTokenAccount: anchor.web3.PublicKey;
+  let delegate: anchor.web3.Keypair;
 
   it("Mint a token", async () => {
     try {
-      const provider = getProvider();
       const walletPublicKey = provider.wallet.publicKey;
-      
-      // Get the amount of SOL needed to pay rent for our Token Mint
       const lamports = await provider.connection.getMinimumBalanceForRentExemption(MINT_SIZE);
-
-      // Get the ATA for a token and the account that we want to own the ATA
       associatedTokenAccount = await getAssociatedTokenAddress(mintKey.publicKey, walletPublicKey);
 
-      // Create the mint transaction
+      console.log("Creating mint account with address:", mintKey.publicKey.toString());
+      console.log("Creating associated token account:", associatedTokenAccount.toString());
+
       const mintTransaction = createTransaction().add(
         anchor.web3.SystemProgram.createAccount({
           fromPubkey: walletPublicKey,
@@ -54,14 +44,9 @@ describe("my-token-program", () => {
         createAssociatedTokenAccountInstruction(walletPublicKey, associatedTokenAccount, walletPublicKey, mintKey.publicKey)
       );
 
-      // Send and confirm the transaction
       await provider.sendAndConfirm(mintTransaction, [mintKey]);
 
-      // Log mint details
-      const mintInfo = await program.provider.connection.getParsedAccountInfo(mintKey.publicKey);
-      console.log("Mint info:", mintInfo);
-
-      // Execute our code to mint our token into our specified ATA
+      console.log(`Minting 10 tokens to: ${associatedTokenAccount.toString()}`);
       await program.methods.mintToken().accounts({
         mint: mintKey.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -69,8 +54,8 @@ describe("my-token-program", () => {
         authority: walletPublicKey,
       }).rpc();
 
-      // Verify the minted token amount on the ATA for our anchor wallet
-      const minted = (await program.provider.connection.getParsedAccountInfo(associatedTokenAccount)).value.data.parsed.info.tokenAmount.amount;
+      const minted = (await provider.connection.getParsedAccountInfo(associatedTokenAccount)).value.data.parsed.info.tokenAmount.amount;
+      console.log(`Minted amount in associated token account: ${minted}`);
       assert.equal(minted, 10);
 
     } catch (error) {
@@ -80,24 +65,20 @@ describe("my-token-program", () => {
 
   it("Transfer token", async () => {
     try {
-      const provider = getProvider();
       const walletPublicKey = provider.wallet.publicKey;
-      
-      // Generate a keypair for the wallet that will receive the token
       const toWallet = anchor.web3.Keypair.generate();
-
-      // Get the ATA for a token on the receiver wallet
       const toATA = await getAssociatedTokenAddress(mintKey.publicKey, toWallet.publicKey);
 
-      // Create the transfer transaction
+      console.log("Creating associated token account for transfer to:", toWallet.publicKey.toString());
+      console.log("Associated token account:", toATA.toString());
+
       const transferTransaction = createTransaction().add(
         createAssociatedTokenAccountInstruction(walletPublicKey, toATA, toWallet.publicKey, mintKey.publicKey)
       );
 
-      // Send and confirm the transaction
       await provider.sendAndConfirm(transferTransaction, []);
 
-      // Execute our transfer smart contract
+      console.log(`Transferring 5 tokens from ${associatedTokenAccount.toString()} to ${toATA.toString()}`);
       await program.methods.transferToken().accounts({
         tokenProgram: TOKEN_PROGRAM_ID,
         from: associatedTokenAccount,
@@ -105,12 +86,77 @@ describe("my-token-program", () => {
         to: toATA,
       }).rpc();
 
-      // Verify the transferred token amount on the ATA for the receiver wallet
-      const minted = (await program.provider.connection.getParsedAccountInfo(associatedTokenAccount)).value.data.parsed.info.tokenAmount.amount;
-      assert.equal(minted, 5);
+      const fromBalance = (await provider.connection.getParsedAccountInfo(associatedTokenAccount)).value.data.parsed.info.tokenAmount.amount;
+      const toBalance = (await provider.connection.getParsedAccountInfo(toATA)).value.data.parsed.info.tokenAmount.amount;
+
+      console.log(`Balance of from account after transfer: ${fromBalance}`);
+      console.log(`Balance of to account after transfer: ${toBalance}`);
+      assert.equal(fromBalance, 5);
+      assert.equal(toBalance, 5);
 
     } catch (error) {
       console.error("Error during token transfer:", error);
+    }
+  });
+
+  it("Burn token", async () => {
+    try {
+      const walletPublicKey = provider.wallet.publicKey;
+
+      console.log(`Burning 5 tokens from: ${associatedTokenAccount.toString()}`);
+      await program.methods.burnToken(new anchor.BN(5)).accounts({
+        mint: mintKey.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenAccount: associatedTokenAccount,
+        authority: walletPublicKey,
+      }).rpc();
+
+      const remaining = (await provider.connection.getParsedAccountInfo(associatedTokenAccount)).value.data.parsed.info.tokenAmount.amount;
+      console.log(`Remaining amount in associated token account after burn: ${remaining}`);
+      assert.equal(remaining, 0);
+
+    } catch (error) {
+      console.error("Error during burning:", error);
+    }
+  });
+
+  it("Approve delegate", async () => {
+    try {
+      const walletPublicKey = provider.wallet.publicKey;
+      delegate = anchor.web3.Keypair.generate();
+
+      console.log(`Approving delegate to spend 5 tokens from: ${associatedTokenAccount.toString()}`);
+      await program.methods.approveDelegate(new anchor.BN(5)).accounts({
+        tokenAccount: associatedTokenAccount,
+        delegate: delegate.publicKey,
+        owner: walletPublicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      }).rpc();
+
+      console.log(`Delegate approved for account: ${associatedTokenAccount.toString()}`);
+      // Here you could add a check to confirm delegate approval, possibly by inspecting account state
+
+    } catch (error) {
+      console.error("Error during approving delegate:", error);
+    }
+  });
+
+  it("Revoke delegate", async () => {
+    try {
+      const walletPublicKey = provider.wallet.publicKey;
+
+      console.log(`Revoking delegate authority for account: ${associatedTokenAccount.toString()}`);
+      await program.methods.revokeDelegate().accounts({
+        tokenAccount: associatedTokenAccount,
+        owner: walletPublicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+      }).rpc();
+
+      console.log(`Delegate revoked for account: ${associatedTokenAccount.toString()}`);
+      // Here you could add a check to confirm delegate revocation, possibly by inspecting account state
+
+    } catch (error) {
+      console.error("Error during revoking delegate:", error);
     }
   });
 });
