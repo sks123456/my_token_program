@@ -5,7 +5,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-my_token_program  = "259tUTNsszYSyvQnubuG4GjzCDG1PiyfbqxPB9Rm7SmY"
+my_token_program  = "5tHswiNub3VMUoXcMgfNAgAPmZMnSwoRPsC5jkFjWeBL"
+
+[programs.localnet]
+my_token_program = "5tHswiNub3VMUoXcMgfNAgAPmZMnSwoRPsC5jkFjWeBL"
 
 [registry]
 url = "https://api.apr.dev"
@@ -16,3 +19,4 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+

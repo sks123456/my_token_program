@@ -1,7 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, MintTo, Transfer, Burn, Approve, Revoke};
+use std::str::FromStr;
 
-declare_id!("HeoFLa15SoFAEHBNeaGTLmytW1P1V9Z8c4Hq5YQfz6DT");
+declare_id!("5tHswiNub3VMUoXcMgfNAgAPmZMnSwoRPsC5jkFjWeBL");
 
 #[program]
 pub mod my_token_program {
@@ -10,16 +11,21 @@ pub mod my_token_program {
     pub fn mint_token(ctx: Context<MintToken>) -> Result<()> {
         msg!("Minting 10 tokens to account: {}", ctx.accounts.token_account.key());
         msg!("Mint authority: {}", ctx.accounts.authority.key());
+    
+        let _mint_address = Pubkey::from_str("mntLJRzjHeXDkA3AKv7eUGB5wkK2wmnJJBydWMM8c9t").unwrap();
+        let _authority_address = Pubkey::from_str("samAH4Ygc4XFrvzkdduVC8fw5e8Mchm6DuG2DgMrmSQ").unwrap();
+    
         let cpi_accounts = MintTo {
             mint: ctx.accounts.mint.to_account_info(),
             to: ctx.accounts.token_account.to_account_info(),
             authority: ctx.accounts.authority.to_account_info(),
         };
+    
         let cpi_program = ctx.accounts.token_program.to_account_info();
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
         token::mint_to(cpi_ctx, 10)?;
         Ok(())
-    }
+    }    
 
     pub fn transfer_token(ctx: Context<TransferToken>) -> Result<()> {
         msg!("Transferring 5 tokens from account: {} to account: {}", ctx.accounts.from.key(), ctx.accounts.to.key());
